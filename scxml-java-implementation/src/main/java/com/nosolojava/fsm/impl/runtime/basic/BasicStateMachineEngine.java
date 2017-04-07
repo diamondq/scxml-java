@@ -43,68 +43,95 @@ import com.nosolojava.fsm.runtime.executable.externalcomm.IOProcessor;
 import com.nosolojava.fsm.runtime.executable.externalcomm.InvokeHandler;
 
 public class BasicStateMachineEngine implements StateMachineEngine {
-	private final Logger logger = Logger.getLogger(this.getClass().getName());
-	public static AtomicInteger CHECK_AVAILABLE_SESSIONS_PERIOD_IN_MILLIS = new AtomicInteger(
-			5000);
+	private final Logger								logger										=
+		Logger.getLogger(this.getClass().getName());
 
-	private final ConcurrentMap<String, IOProcessor> ioProcessorMap = new ConcurrentHashMap<String, IOProcessor>();
+	public static AtomicInteger							CHECK_AVAILABLE_SESSIONS_PERIOD_IN_MILLIS	=
+		new AtomicInteger(5000);
 
-	private ConcurrentMap<String, Context> scxmlSessionMap = new ConcurrentHashMap<String, Context>();
-	private ConcurrentMap<String, InvokeHandler> invokeHandlerMap = new ConcurrentHashMap<String, InvokeHandler>();
-	private StateMachineParser parser;
-	private StateMachineFramework framework;
+	private final ConcurrentMap<String, IOProcessor>	ioProcessorMap								=
+		new ConcurrentHashMap<String, IOProcessor>();
 
-	private FSMLogCallback logCallback;
+	private ConcurrentMap<String, Context>				scxmlSessionMap								=
+		new ConcurrentHashMap<String, Context>();
+
+	private ConcurrentMap<String, InvokeHandler>		invokeHandlerMap							=
+		new ConcurrentHashMap<String, InvokeHandler>();
+
+	private StateMachineParser							parser;
+
+	private StateMachineFramework						framework;
+
+	private FSMLogCallback								logCallback;
 
 	// start/shutdown control
-	protected final ReentrantLock startStopLock = new ReentrantLock();
-	protected volatile AtomicBoolean isActive = new AtomicBoolean(false);
+	protected final ReentrantLock						startStopLock								=
+		new ReentrantLock();
+
+	protected volatile AtomicBoolean					isActive									=
+		new AtomicBoolean(false);
 
 	// dispatcher executor
-	private ExecutorService dispatcherExecutor = null;
+	private ExecutorService								dispatcherExecutor							= null;
 
 	// list of available context ordered by event contents (most priority is the
 	// context with external events and no internal events --> the less busy
 	// ones)
-	private final BlockingQueue<Context> availableSessions = createBusyPriorityBlockingQueue();
-	protected final ReentrantLock sessionLock = new ReentrantLock();
-	private ConcurrentMap<String, Context> busySessionMap = new ConcurrentHashMap<String, Context>();
-	private ConcurrentMap<String, Context> emptySessionMap = new ConcurrentHashMap<String, Context>();
+	private final BlockingQueue<Context>				availableSessions							=
+		createBusyPriorityBlockingQueue();
+
+	protected final ReentrantLock						sessionLock									=
+		new ReentrantLock();
+
+	private ConcurrentMap<String, Context>				busySessionMap								=
+		new ConcurrentHashMap<String, Context>();
+
+	private ConcurrentMap<String, Context>				emptySessionMap								=
+		new ConcurrentHashMap<String, Context>();
+
 	// context executor
-	private ExecutorService contextEventsExecutor = Executors
-			.newCachedThreadPool();
+	private ExecutorService								contextEventsExecutor						=
+		Executors.newCachedThreadPool();
 
-	ContextFactory contextFactory = new ContextFactory() {
+	ContextFactory										contextFactory								=
+		new ContextFactory() {
 
-		@Override
-		public Context createContext(String sessionId, String parentSessionId,
-				StateMachineModel model, StateMachineEngine engine,
-				Map<String, Serializable> initValues)
-				throws ConfigurationException {
-			return new JexlFSMContext(sessionId, parentSessionId, model,
-					engine, initValues);
-		}
-	};
+																											@Override
+																											public Context createContext(
+																												String sessionId,
+																												String parentSessionId,
+																												StateMachineModel model,
+																												StateMachineEngine engine,
+																												Map<String, Serializable> initValues)
+																												throws ConfigurationException {
+																												return new JexlFSMContext(
+																													sessionId,
+																													parentSessionId,
+																													model,
+																													engine,
+																													initValues);
+																											}
+																										};
 
 	public BasicStateMachineEngine() throws ConfigurationException {
 		this(null);
 
 	}
 
-	public BasicStateMachineEngine(List<XppActionParser> customActionParsers)
-			throws ConfigurationException {
+	public BasicStateMachineEngine(List<XppActionParser> customActionParsers) throws ConfigurationException {
 		this(customActionParsers, null);
 
 	}
 
-	public BasicStateMachineEngine(List<XppActionParser> customActionParsers,
-			FSMLogCallback logCallback) throws ConfigurationException {
+	public BasicStateMachineEngine(List<XppActionParser> customActionParsers, FSMLogCallback logCallback)
+		throws ConfigurationException {
 		super();
 		this.logCallback = logCallback;
 
 		if (customActionParsers != null) {
 			this.parser = new XppStateMachineParser(customActionParsers);
-		} else {
+		}
+		else {
 			this.parser = new XppStateMachineParser();
 		}
 
@@ -131,8 +158,7 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 	public void start() {
 
 		if (this.isActive.get()) {
-			throw new RuntimeException(
-					"Engine can't be started twice, create a new instance");
+			throw new RuntimeException("Engine can't be started twice, create a new instance");
 		}
 
 		try {
@@ -140,19 +166,19 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 			if (this.isActive.compareAndSet(false, true)) {
 				this.dispatcherExecutor = Executors.newSingleThreadExecutor();
 				this.dispatcherExecutor.execute(new DispatchEventsTask());
-			} else {
-				throw new RuntimeException(
-						"Engine can't be started twice, create a new instance");
 			}
-		} finally {
+			else {
+				throw new RuntimeException("Engine can't be started twice, create a new instance");
+			}
+		}
+		finally {
 			this.startStopLock.unlock();
 		}
 
 	}
 
 	@Override
-	public boolean shutdownAndWait(long timeout, TimeUnit unit)
-			throws InterruptedException {
+	public boolean shutdownAndWait(long timeout, TimeUnit unit) throws InterruptedException {
 
 		boolean result = false;
 
@@ -161,11 +187,13 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 			this.startStopLock.lock();
 			if (this.isActive.compareAndSet(true, false)) {
 				this.dispatcherExecutor.shutdown();
-			} else {
-				throw new RuntimeException(
-						"This engine has not been started or has been shutdown before, create a new instance.");
 			}
-		} finally {
+			else {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
 			this.startStopLock.unlock();
 		}
 
@@ -183,37 +211,37 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 	public void forceShutdown() {
 		try {
 			shutdownAndWait(-1, null);
-		} catch (InterruptedException e) {
+		}
+		catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
 
 	@Override
-	public Context startFSMSession(URI fsmModelUri)
-			throws ConfigurationException, IOException, SCXMLParserException {
+	public Context startFSMSession(URI fsmModelUri) throws ConfigurationException, IOException, SCXMLParserException {
 
 		return this.startFSMSession(null, null, fsmModelUri, null);
 	}
 
 	@Override
 	public Context startFSMSession(String parentSessionId, URI fsmModelUri)
-			throws ConfigurationException, IOException, SCXMLParserException {
+		throws ConfigurationException, IOException, SCXMLParserException {
 		return startFSMSession(null, parentSessionId, fsmModelUri, null);
 	}
 
 	@Override
-	public Context startFSMSession(String sessionId, String parentSessionId,
-			URI fsmModelUri, Map<String, Serializable> initValues)
-			throws ConfigurationException, IOException, SCXMLParserException {
+	public Context startFSMSession(String sessionId, String parentSessionId, URI fsmModelUri,
+		Map<String, Serializable> initValues) throws ConfigurationException, IOException, SCXMLParserException {
 
 		Context context;
 		try {
 			this.startStopLock.lock();
 			if (!this.isActive.get()) {
 				throw new RuntimeException(
-						"This engine has not been started or has been shutdown before, create a new instance.");
+					"This engine has not been started or has been shutdown before, create a new instance.");
 			}
-		} finally {
+		}
+		finally {
 			this.startStopLock.unlock();
 
 		}
@@ -222,19 +250,20 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 		StateMachineModel model = this.parser.parseScxml(fsmModelUri);
 
 		// create the context (the session)
-		context = this.contextFactory.createContext(sessionId, parentSessionId,
-				model, this, initValues);
+		context = this.contextFactory.createContext(sessionId, parentSessionId, model, this, initValues);
 
 		// save the session so events could arrive while initiating
 		try {
 			this.startStopLock.lock();
 			if (this.isActive.get()) {
 				this.scxmlSessionMap.put(context.getSessionId(), context);
-			} else {
-				throw new RuntimeException(
-						"This engine has not been started or has been shutdown before, create a new instance.");
 			}
-		} finally {
+			else {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
 			this.startStopLock.unlock();
 
 		}
@@ -242,16 +271,18 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 		// starts the FSM (this is synchronous)
 		try {
 			this.framework.initFSM(context);
-		} catch (Exception e) {
-			//remove session from map
-			try{
+		}
+		catch (Exception e) {
+			// remove session from map
+			try {
 				this.startStopLock.lock();
 				this.scxmlSessionMap.remove(context.getSessionId());
-			}finally{
+			}
+			finally {
 				this.startStopLock.unlock();
 			}
-			
-			//throw exception
+
+			// throw exception
 			throw e;
 
 		}
@@ -261,16 +292,101 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 			this.startStopLock.lock();
 			if (this.isActive.get()) {
 				this.availableSessions.offer(context);
-			} else {
-				throw new RuntimeException(
-						"This engine has not been started or has been shutdown before, create a new instance.");
 			}
-		} finally {
+			else {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
 			this.startStopLock.unlock();
 
 		}
 
 		return context;
+	}
+
+	@Override
+	public Context startFSMSession(String sessionId, String parentSessionId, StateMachineModel model,
+		Map<String, Serializable> initValues) throws ConfigurationException, IOException, SCXMLParserException {
+
+		Context context;
+		try {
+			this.startStopLock.lock();
+			if (!this.isActive.get()) {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
+			this.startStopLock.unlock();
+
+		}
+
+		// create the context (the session)
+		context = this.contextFactory.createContext(sessionId, parentSessionId, model, this, initValues);
+
+		// save the session so events could arrive while initiating
+		try {
+			this.startStopLock.lock();
+			if (this.isActive.get()) {
+				this.scxmlSessionMap.put(context.getSessionId(), context);
+			}
+			else {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
+			this.startStopLock.unlock();
+
+		}
+
+		return context;
+	}
+
+	@Override
+	public void offerSession(Context context) {
+		// offer the session to runtime so it can process events
+		try {
+			this.startStopLock.lock();
+			if (this.isActive.get()) {
+				this.availableSessions.offer(context);
+			}
+			else {
+				throw new RuntimeException(
+					"This engine has not been started or has been shutdown before, create a new instance.");
+			}
+		}
+		finally {
+			this.startStopLock.unlock();
+
+		}
+
+	}
+
+	@Override
+	public void initSession(Context context) throws ConfigurationException {
+
+		// starts the FSM (this is synchronous)
+		try {
+			this.framework.initFSM(context);
+		}
+		catch (ConfigurationException e) {
+			// remove session from map
+			try {
+				this.startStopLock.lock();
+				this.scxmlSessionMap.remove(context.getSessionId());
+			}
+			finally {
+				this.startStopLock.unlock();
+			}
+
+			// throw exception
+			throw e;
+
+		}
+
 	}
 
 	/* this class runs in a single thread !! */
@@ -282,14 +398,12 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 			try {
 				// while engine is active or is there any active session
 				BasicStateMachineEngine engineInstance = BasicStateMachineEngine.this;
-				while (engineInstance.isActive.get()
-						|| !engineInstance.scxmlSessionMap.isEmpty()) {
+				while (engineInstance.isActive.get() || !engineInstance.scxmlSessionMap.isEmpty()) {
 
 					// get next available context, if timeout then check end
 					// condition
 					Context availableContext = engineInstance.availableSessions
-							.poll(CHECK_AVAILABLE_SESSIONS_PERIOD_IN_MILLIS
-									.get(), TimeUnit.MILLISECONDS);
+						.poll(CHECK_AVAILABLE_SESSIONS_PERIOD_IN_MILLIS.get(), TimeUnit.MILLISECONDS);
 
 					// if there is any available context
 					if (availableContext != null) {
@@ -298,35 +412,35 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 						if (availableContext.hasExternalEvents()) {
 							// then create a push event task
 							Event event = availableContext.pollExternalEvent();
-							PushEventTask pushEventtask = new PushEventTask(
-									event, availableContext);
+							PushEventTask pushEventtask = new PushEventTask(event, availableContext);
 
 							try {
 								sessionLock.lock();
-								busySessionMap.put(
-										availableContext.getSessionId(),
-										availableContext);
-							} finally {
+								busySessionMap.put(availableContext.getSessionId(), availableContext);
+							}
+							finally {
 								sessionLock.unlock();
 							}
 
 							// and execute the macrostep
-							if (!engineInstance.contextEventsExecutor
-									.isShutdown()) {
-								engineInstance.contextEventsExecutor
-										.execute(pushEventtask);
+							if (!engineInstance.contextEventsExecutor.isShutdown()) {
+								engineInstance.contextEventsExecutor.execute(pushEventtask);
 							}
 
-						} else {
+						}
+						else {
 							// returns to available queue (it will has the lest
 							// priority)
-							engineInstance.availableSessions
-									.offer(availableContext);
+							// mmansell - If there are no events, then there's no point
+							// in adding it back to the sessions queue
+							// engineInstance.availableSessions
+							// .offer(availableContext);
 						}
 					}
 
 				}
-			} catch (InterruptedException e) {
+			}
+			catch (InterruptedException e) {
 				// TODO review interrupted exception handling
 				logger.log(Level.SEVERE, "Interrupted exception");
 
@@ -335,8 +449,9 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 	}
 
 	class PushEventTask implements Runnable {
-		private final Context context;
-		private final Event event;
+		private final Context	context;
+
+		private final Event		event;
 
 		public PushEventTask(Event event, Context context) {
 			super();
@@ -348,36 +463,33 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 		public void run() {
 
 			// run the macro step
-			BasicStateMachineEngine.this.getStateMachineFramework()
-					.handleExternalEvent(event, context);
+			BasicStateMachineEngine.this.getStateMachineFramework().handleExternalEvent(event, context);
 
 			// lock to update maps (the session has to pass from busy to active
 			// or empty in an atomic way)
 			try {
 				sessionLock.lock();
 				// remove from busy map
-				BasicStateMachineEngine.this.busySessionMap.remove(context
-						.getSessionId());
+				BasicStateMachineEngine.this.busySessionMap.remove(context.getSessionId());
 
 				// if the session is still active
-				if (BasicStateMachineEngine.this.scxmlSessionMap
-						.containsKey(context.getSessionId())) {
+				if (BasicStateMachineEngine.this.scxmlSessionMap.containsKey(context.getSessionId())) {
 
 					// if has any event
 					if (context.hasExternalEvents()) {
 
 						// offer again to available queue
-						BasicStateMachineEngine.this.availableSessions
-								.offer(context);
+						BasicStateMachineEngine.this.availableSessions.offer(context);
 
-					} else {
+					}
+					else {
 						// offer to empty sessions
-						BasicStateMachineEngine.this.emptySessionMap.put(
-								context.getSessionId(), context);
+						BasicStateMachineEngine.this.emptySessionMap.put(context.getSessionId(), context);
 					}
 
 				}
-			} finally {
+			}
+			finally {
 				sessionLock.unlock();
 			}
 
@@ -407,7 +519,8 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 				}
 
 				context.offerExternalEvent(event);
-			} finally {
+			}
+			finally {
 				sessionLock.unlock();
 			}
 		}
@@ -489,39 +602,42 @@ public class BasicStateMachineEngine implements StateMachineEngine {
 	}
 
 	protected PriorityBlockingQueue<Context> createBusyPriorityBlockingQueue() {
-		return new PriorityBlockingQueue<Context>(11,
-				new Comparator<Context>() {
+		return new PriorityBlockingQueue<Context>(11, new Comparator<Context>() {
 
-					@Override
-					public int compare(Context object1, Context object2) {
-						if (object1 == object2) {
-							return 0;
-						} else {
-							if (object1 == null) {
+			@Override
+			public int compare(Context object1, Context object2) {
+				if (object1 == object2) {
+					return 0;
+				}
+				else {
+					if (object1 == null) {
+						return 1;
+					}
+					else if (object2 == null) {
+						return -1;
+					}
+					else {
+						if (object1.hasExternalEvents() && !object1.hasInternalEvents()) {
+							return -1;
+						}
+						else if (object1.hasExternalEvents() && object1.hasInternalEvents()) {
+							if (object2.hasExternalEvents() && !object2.hasInternalEvents()) {
 								return 1;
-							} else if (object2 == null) {
+							}
+							else {
 								return -1;
-							} else {
-								if (object1.hasExternalEvents()
-										&& !object1.hasInternalEvents()) {
-									return -1;
-								} else if (object1.hasExternalEvents()
-										&& object1.hasInternalEvents()) {
-									if (object2.hasExternalEvents()
-											&& !object2.hasInternalEvents()) {
-										return 1;
-									} else {
-										return -1;
-									}
-								} else if (object2.hasExternalEvents()) {
-									return 1;
-								} else {
-									return -1;
-								}
 							}
 						}
+						else if (object2.hasExternalEvents()) {
+							return 1;
+						}
+						else {
+							return -1;
+						}
 					}
-				});
+				}
+			}
+		});
 	}
 
 	@Override

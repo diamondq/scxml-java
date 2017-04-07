@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import com.nosolojava.fsm.model.StateMachineModel;
 import com.nosolojava.fsm.model.config.exception.ConfigurationException;
 import com.nosolojava.fsm.model.externalcomm.Invoke;
 import com.nosolojava.fsm.parser.StateMachineParser;
@@ -148,4 +149,11 @@ public interface StateMachineEngine {
 	 * @return
 	 */
 	FSMLogCallback getLogCallback();
+	
+	public Context startFSMSession(String sessionId, String parentSessionId, StateMachineModel model,
+		Map<String, Serializable> initValues) throws ConfigurationException, IOException, SCXMLParserException;
+	
+	public void offerSession(Context context);
+	
+	public void initSession(Context context) throws ConfigurationException;
 }
